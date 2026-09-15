@@ -99,6 +99,23 @@ EOF
 }
 EOF
       ;;
+    blocked-keys)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"blocked",
+  "active_children":[],
+  "decisions_open":[
+    {"id":"phase8","key":"api","verb":"blocked","summary":"API dependency"},
+    {"id":"phase8","key":"db","verb":"blocked","summary":"Database dependency"}
+  ],
+  "holds":[],"queued":[],"landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
     invalid-orphan)
       cat > "$MATE/state/home-summary.json" <<EOF
 {
@@ -181,6 +198,13 @@ run_reporter || fail "keyed captain decisions did not publish"
 grep -F 'Captain feedback needed: API path - decision required; Database path - decision required' "$STATUS" >/dev/null \
   || fail "distinct keyed decisions from one child were collapsed: $(cat "$STATUS")"
 pass "distinct keyed captain decisions from one child are all reported"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary blocked-keys
+run_reporter || fail "keyed blockers did not publish"
+grep -F 'Stalled: API dependency - blocked; Database dependency - blocked. Firstmate help: inspect and unblock API dependency, Database dependency' "$STATUS" >/dev/null \
+  || fail "distinct keyed blockers from one child were collapsed: $(cat "$STATUS")"
+pass "distinct keyed blockers from one child are all reported"
 
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary invalid-orphan
