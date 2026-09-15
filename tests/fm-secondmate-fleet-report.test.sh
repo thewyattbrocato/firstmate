@@ -99,6 +99,23 @@ EOF
 }
 EOF
       ;;
+    long-decision-keys)
+      local key_prefix
+      key_prefix=$(printf '%100s' '' | tr ' ' k)
+      jq -n --arg api_key "${key_prefix}a" --arg db_key "${key_prefix}b" '{
+        schema:"fm-secondmate-home-summary.v1",
+        valid:true,
+        reason:null,
+        invalidity:{kind:null,ids:[]},
+        state:"captain_decision",
+        active_children:[],
+        decisions_open:[
+          {id:"phase8",key:$api_key,verb:"needs-decision",summary:"Long API path"},
+          {id:"phase8",key:$db_key,verb:"needs-decision",summary:"Long Database path"}
+        ],
+        holds:[],queued:[],landed:[],endpoints:[],counts:{},omitted:[]
+      }' > "$MATE/state/home-summary.json"
+      ;;
     blocked-keys)
       cat > "$MATE/state/home-summary.json" <<EOF
 {
@@ -113,6 +130,25 @@ EOF
     {"id":"phase8","key":"db","verb":"blocked","summary":"Database dependency"}
   ],
   "holds":[],"queued":[],"landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
+    captain-deferral)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"queued",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[
+    {"id":"captain-plan","title":"Choose launch window","hold_reason":"until 2026-10-01","hold_kind":"captain","hold_bucket":"dated"},
+    {"id":"vendor-plan","title":"Vendor readiness","hold_reason":"vendor date pending","hold_kind":"external","hold_bucket":"dated"}
+  ],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[]
 }
 EOF
       ;;
@@ -200,11 +236,30 @@ grep -F 'Captain feedback needed: API path - decision required; Database path - 
 pass "distinct keyed captain decisions from one child are all reported"
 
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary long-decision-keys
+run_reporter || fail "long keyed captain decisions did not publish"
+grep -F 'Captain feedback needed: Long API path - decision required; Long Database path - decision required' "$STATUS" >/dev/null \
+  || fail "distinct long-prefix decisions from one child were collapsed: $(cat "$STATUS")"
+pass "untruncated decision keys preserve semantic identity"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary blocked-keys
 run_reporter || fail "keyed blockers did not publish"
 grep -F 'Stalled: API dependency - blocked; Database dependency - blocked. Firstmate help: inspect and unblock API dependency, Database dependency' "$STATUS" >/dev/null \
   || fail "distinct keyed blockers from one child were collapsed: $(cat "$STATUS")"
 pass "distinct keyed blockers from one child are all reported"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary captain-deferral
+run_reporter || fail "captain deferral did not publish"
+grep -F 'Known external wait: Vendor readiness - vendor date pending' "$STATUS" >/dev/null \
+  || fail "non-captain dated hold was not reported as external wait: $(cat "$STATUS")"
+grep -F 'Known captain deferral: Choose launch window - until 2026-10-01' "$STATUS" >/dev/null \
+  || fail "dated captain hold was not reported as a captain deferral: $(cat "$STATUS")"
+if grep -F 'Captain feedback needed:' "$STATUS" >/dev/null; then
+  fail "deferred captain hold was reported as immediate captain feedback: $(cat "$STATUS")"
+fi
+pass "deferred captain holds are distinct from external waits and feedback"
 
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary invalid-orphan

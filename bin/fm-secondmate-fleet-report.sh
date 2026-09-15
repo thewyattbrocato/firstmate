@@ -74,7 +74,7 @@ projection=$(jq -cS '
     tostring | gsub("[\\t\\r\\n]+"; " ") | gsub("  +"; " ")
     | if length > $n then .[:$n] else . end;
   def item($id; $key; $label; $reason):
-    {id:($id | text(80)),key:($key | text(100)),label:($label | text(100)),reason:($reason | text(160))};
+    {id:($id | tostring),key:($key | tostring),label:($label | text(100)),reason:($reason | text(160))};
   def items_text:
     map(.label + (if .reason == "" then "" else " - " + .reason end)) | join("; ");
   if .schema != "fm-secondmate-home-summary.v1" then error("unsupported home-summary schema") else . end
@@ -102,12 +102,17 @@ projection=$(jq -cS '
       | select(.source == "child-state" and .state == "paused")
       | item(.id; .id; (.title // .id); (.reason // "external wait"))]
       + [.queued[]?
-         | select(.hold_bucket == "dated" or .hold_bucket == "aged")
+         | select((.hold_kind // "") != "captain" and (.hold_bucket == "dated" or .hold_bucket == "aged"))
          | item(.id; .id; (.title // .id); (.hold_reason // "external wait"))]
       | unique_by([.id, .reason])) as $waiting
+  | ([.queued[]?
+      | select((.hold_kind // "") == "captain" and (.hold_bucket == "dated" or .hold_bucket == "aged"))
+      | item(.id; .id; (.title // .id); (.hold_reason // .hold_bucket // "captain deferral"))]
+      | unique_by([.id, .reason])) as $deferred
   | (if ($captain | length) > 0 then "needs-decision"
      elif ($stalled | length) > 0 then "blocked"
      elif ($waiting | length) > 0 then "paused"
+     elif ($deferred | length) > 0 then "paused"
      elif ($healthy | length) > 0 then "working"
      else "resolved" end) as $verb
   | ([if ($healthy | length) > 0 then "Healthy progress: " + ($healthy | items_text) else empty end,
@@ -115,9 +120,10 @@ projection=$(jq -cS '
         "Stalled: " + ($stalled | items_text) + ". Firstmate help: inspect and unblock " + ($stalled | map(.label) | join(", "))
       else empty end,
       if ($waiting | length) > 0 then "Known external wait: " + ($waiting | items_text) else empty end,
+      if ($deferred | length) > 0 then "Known captain deferral: " + ($deferred | items_text) else empty end,
       if ($captain | length) > 0 then "Captain feedback needed: " + ($captain | items_text) else empty end]
      | if length == 0 then "No active child work" else join(". ") end) as $note
-  | {verb:$verb,note:$note,healthy:$healthy,stalled:$stalled,waiting:$waiting,captain:$captain}
+  | {verb:$verb,note:$note,healthy:$healthy,stalled:$stalled,waiting:$waiting,deferred:$deferred,captain:$captain}
 ' "$SUMMARY") || die "could not derive a child-fleet report from the home summary"
 
 fingerprint=$(sha256_text "$projection") || die "shasum or sha256sum is required"
