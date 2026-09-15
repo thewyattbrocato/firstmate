@@ -77,7 +77,20 @@ projection=$(jq -cS '
     {id:($id | tostring),key:($key | tostring),label:($label | text(100)),reason:($reason | text(160))};
   def items_text:
     map(.label + (if .reason == "" then "" else " - " + .reason end)) | join("; ");
+  def omitted_label:
+    if .surface == "active_children" then "healthy progress item(s)"
+    elif .surface == "decisions_open" then "Captain feedback item(s)"
+    elif .surface == "holds" then "hold item(s)"
+    elif .surface == "queued" then "queued item(s)"
+    elif .surface == "endpoints" then "child endpoint(s)"
+    else .surface end;
+  def omitted_text:
+    map((.count | tostring) + " additional " + omitted_label) | join("; ");
   if .schema != "fm-secondmate-home-summary.v1" then error("unsupported home-summary schema") else . end
+  | ([.omitted[]?
+      | select(.surface == "active_children" or .surface == "decisions_open" or .surface == "holds" or .surface == "queued" or .surface == "endpoints")
+      | {surface:(.surface | tostring),count:(.count | tonumber? // 0)}
+      | select(.count > 0)] | sort_by(.surface)) as $omitted
   | ([.active_children[]?
       | item(.id; .id; (.name // .id); (.doing // "in progress"))] | unique_by(.id)) as $healthy
   | ([.decisions_open[]?
@@ -102,17 +115,18 @@ projection=$(jq -cS '
       | select(.source == "child-state" and .state == "paused")
       | item(.id; .id; (.title // .id); (.reason // "external wait"))]
       + [.queued[]?
-         | select((.hold_kind // "") != "captain" and (.hold_bucket == "dated" or .hold_bucket == "aged"))
+         | select((.hold_kind // "") != "captain" and ((.hold_bucket == "dated" or .hold_bucket == "aged") or (.hold_reason // null) != null))
          | item(.id; .id; (.title // .id); (.hold_reason // "external wait"))]
       | unique_by([.id, .reason])) as $waiting
   | ([.queued[]?
       | select((.hold_kind // "") == "captain" and (.hold_bucket == "dated" or .hold_bucket == "aged"))
       | item(.id; .id; (.title // .id); (.hold_reason // .hold_bucket // "captain deferral"))]
       | unique_by([.id, .reason])) as $deferred
-  | (if ($captain | length) > 0 then "needs-decision"
+  | (if ($captain | length) > 0 or any($omitted[]; .surface == "decisions_open") then "needs-decision"
      elif ($stalled | length) > 0 then "blocked"
      elif ($waiting | length) > 0 then "paused"
      elif ($deferred | length) > 0 then "paused"
+     elif ($omitted | length) > 0 then "paused"
      elif ($healthy | length) > 0 then "working"
      else "resolved" end) as $verb
   | ([if ($healthy | length) > 0 then "Healthy progress: " + ($healthy | items_text) else empty end,
@@ -121,9 +135,10 @@ projection=$(jq -cS '
       else empty end,
       if ($waiting | length) > 0 then "Known external wait: " + ($waiting | items_text) else empty end,
       if ($deferred | length) > 0 then "Known captain deferral: " + ($deferred | items_text) else empty end,
-      if ($captain | length) > 0 then "Captain feedback needed: " + ($captain | items_text) else empty end]
+      if ($captain | length) > 0 then "Captain feedback needed: " + ($captain | items_text) else empty end,
+      if ($omitted | length) > 0 then "Summary incomplete: " + ($omitted | omitted_text) else empty end]
      | if length == 0 then "No active child work" else join(". ") end) as $note
-  | {verb:$verb,note:$note,healthy:$healthy,stalled:$stalled,waiting:$waiting,deferred:$deferred,captain:$captain}
+  | {verb:$verb,note:$note,healthy:$healthy,stalled:$stalled,waiting:$waiting,deferred:$deferred,captain:$captain,omitted:$omitted}
 ' "$SUMMARY") || die "could not derive a child-fleet report from the home summary"
 
 fingerprint=$(sha256_text "$projection") || die "shasum or sha256sum is required"

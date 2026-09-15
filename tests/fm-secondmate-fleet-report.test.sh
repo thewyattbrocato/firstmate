@@ -152,6 +152,83 @@ EOF
 }
 EOF
       ;;
+    backlog-external-hold)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"externally_held",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[
+    {"id":"vendor-contract","title":"Vendor contract","reason":"waiting on vendor signature","source":"backlog"}
+  ],
+  "queued":[
+    {"id":"vendor-contract","title":"Vendor contract","hold_reason":"waiting on vendor signature","hold_kind":"external","hold_bucket":null}
+  ],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
+    omitted-decisions-one)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"captain_decision",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[
+    {"surface":"decisions_open","count":1}
+  ]
+}
+EOF
+      ;;
+    omitted-decisions-two)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"captain_decision",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[
+    {"surface":"decisions_open","count":2}
+  ]
+}
+EOF
+      ;;
+    omitted-child-surfaces)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"active_child_work",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[
+    {"surface":"active_children","count":3},
+    {"surface":"holds","count":2},
+    {"surface":"queued","count":1},
+    {"surface":"endpoints","count":4}
+  ]
+}
+EOF
+      ;;
     invalid-orphan)
       cat > "$MATE/state/home-summary.json" <<EOF
 {
@@ -260,6 +337,36 @@ if grep -F 'Captain feedback needed:' "$STATUS" >/dev/null; then
   fail "deferred captain hold was reported as immediate captain feedback: $(cat "$STATUS")"
 fi
 pass "deferred captain holds are distinct from external waits and feedback"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary backlog-external-hold
+run_reporter || fail "backlog external hold did not publish"
+grep -F 'paused [key=secondmate-fleet]: Known external wait: Vendor contract - waiting on vendor signature' "$STATUS" >/dev/null \
+  || fail "backlog-declared external hold was not reported as external wait: $(cat "$STATUS")"
+pass "backlog-declared external holds are reported as external waits"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary omitted-decisions-one
+run_reporter || fail "omitted captain decisions did not publish"
+grep -F 'needs-decision [key=secondmate-fleet]: Summary incomplete: 1 additional Captain feedback item(s)' "$STATUS" >/dev/null \
+  || fail "omitted captain decision count was not surfaced: $(cat "$STATUS")"
+write_summary omitted-decisions-two
+run_reporter || fail "changed omitted captain decision count did not publish"
+[ "$(grep -c '^needs-decision \[key=secondmate-fleet\]:' "$STATUS")" -eq 2 ] \
+  || fail "changed omitted decision count did not trigger a new report: $(cat "$STATUS")"
+grep -F 'Summary incomplete: 2 additional Captain feedback item(s)' "$STATUS" >/dev/null \
+  || fail "updated omitted captain decision count was not surfaced: $(cat "$STATUS")"
+pass "omitted captain feedback counts are semantic report changes"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary omitted-child-surfaces
+run_reporter || fail "omitted child surfaces did not publish"
+grep -F 'paused [key=secondmate-fleet]: Summary incomplete: 3 additional healthy progress item(s); 4 additional child endpoint(s); 2 additional hold item(s); 1 additional queued item(s)' "$STATUS" >/dev/null \
+  || fail "omitted child-surface counts were not surfaced as incomplete: $(cat "$STATUS")"
+if grep -F 'No active child work' "$STATUS" >/dev/null; then
+  fail "omitted child surfaces were reported as idle: $(cat "$STATUS")"
+fi
+pass "omitted child surfaces keep fleet reports visibly incomplete"
 
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary invalid-orphan
