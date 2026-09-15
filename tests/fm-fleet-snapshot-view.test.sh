@@ -1045,9 +1045,35 @@ EOF
   pass "home-summary excludes kind=secondmate from unowned_current and terminal_in_flight"
 }
 
+test_home_summary_discloses_held_child_overflow() {
+  local home fakebin out
+  home=$(make_home held-overflow)
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] held-a - Held A (repo: alpha) (kind: ship) (hold: waiting on vendor A) (hold-kind: external)
+- [ ] held-b - Held B (repo: alpha) (kind: ship) (hold: waiting on vendor B) (hold-kind: external)
+- [ ] held-c - Held C (repo: alpha) (kind: ship) (hold: waiting on vendor C) (hold-kind: external)
+
+## Done
+EOF
+  fakebin=$(make_fakebin "$home")
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_SECONDMATE_QUEUED=2 \
+    "$SNAPSHOT" --secondmate-home-summary)
+  printf '%s' "$out" | jq -e '
+    .schema == "fm-secondmate-home-summary.v1"
+      and .counts.holds == 3
+      and (.holds | length) == 2
+      and (.omitted | any(.surface == "holds" and .count == 1))
+  ' >/dev/null || fail "held child overflow was not disclosed in home summary: $out"
+  pass "home-summary discloses held child overflow"
+}
+
 test_empty_fleet_json
 test_fixture_snapshot_json
 test_home_summary_excludes_secondmate_from_child_inventory
+test_home_summary_discloses_held_child_overflow
 test_undated_captain_hold_phrasing_and_aging
 test_hold_buckets_are_total_and_text_blind
 test_main_inventory_orphan_and_unstructured_disclosure
