@@ -161,10 +161,11 @@
 #   never lists) passes through unvalidated with a stderr notice, and a bare
 #   fuzzy pattern is left to omp's own matcher. A crewmate or scout loads its
 #   per-task busy-state extension with -e from state/ (outside the worktree, so
-#   auto-discovery cannot load it a second time); a secondmate passes no -e at
-#   all and relies on omp auto-discovering the home's tracked .omp/extensions/
-#   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
-#   cwd-only with no trust dialog).
+#   auto-discovery cannot load it a second time). A secondmate relies on omp
+#   auto-discovering only the home's tracked primary .omp/extensions/ files and
+#   still passes its distinct state-owned busy-state extension exactly once with
+#   -e (verified, omp 18.1.11: a tracked file named both ways loads twice, and
+#   discovery is cwd-only with no trust dialog).
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
