@@ -503,14 +503,9 @@ SH
 # so a mate stuck busy forever still alarms.
 #
 # Scope, so this case is not read as more coverage than it is: the fixture arms
-# the busy contract by hand through fm-busy-event.sh. A real --secondmate spawn
-# never does - bin/fm-spawn.sh arms the contract inside its `[ "$KIND" !=
-# secondmate ]` guard, so both arm calls are skipped for a mate - and with no
-# record fm_busy_classify_meta answers "unknown missing" for a tmux-backed
-# claude, pi, opencode, or omp mate, which is not a busy verdict. Hand-arming is
-# what isolates the launch-aging defect this case pins, and the launch-aging
-# defect is all it pins: on tmux the stall alarm is still reachable through that
-# missing busy record, tracked upstream as issue 4268.
+# the busy contract by hand through fm-busy-event.sh. Real --secondmate spawn
+# coverage lives in fm-spawn-dispatch-profile.test.sh; hand-arming here isolates
+# the launch-aging behavior from launch setup and adapter wiring.
 test_secondmate_long_lived_mate_mid_turn_is_not_a_stall() {
   local dir state sub fakebin stall_count
   dir=$(make_case secondmate-long-lived-active-turn)

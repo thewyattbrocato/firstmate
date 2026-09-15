@@ -23,8 +23,11 @@
 # state/.home-summary-refresh.log when available, with stderr as the bounded
 # fallback, and the command exits zero. Session start, watcher, spawn, and
 # teardown use that mode so this side-band publication can never change their
-# result. Without it, failures are printed and returned to the direct caller
-# for tests and diagnostics.
+# result. For a seeded Second Mate, successful publication also invokes
+# fm-secondmate-fleet-report.sh while holding the refresh lock; that projection
+# reports meaningful child-fleet changes to the parent and keeps unchanged
+# refreshes silent. Without --best-effort, either failure is printed and returned
+# to the direct caller for tests and diagnostics.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -182,6 +185,14 @@ home_summary_refresh_once() {
     return 1
   fi
   HOME_SUMMARY_TMP=
+  if ! env \
+      FM_ROOT_OVERRIDE="$FM_ROOT" \
+      FM_HOME="$FM_HOME" \
+      FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-secondmate-fleet-report.sh"; then
+    home_summary_fail "child-fleet parent report failed"
+    return 1
+  fi
   fm_lock_release "$REFRESH_LOCK"
   HOME_SUMMARY_LOCK_HELD=0
   trap - EXIT HUP INT TERM
