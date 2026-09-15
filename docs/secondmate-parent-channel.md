@@ -41,13 +41,14 @@ The pending-reply guard may restate only the correlated line from a local mate's
 Other correlated mate-home status lines remain wrong-home evidence, while a remote home's routed `state/parent-replies.status` is already the parent channel and is not classified as wrong-home.
 A missed-reply escalation includes the complete first sighting path and line number in readable shell-escaped form.
 The child-fleet report is a semantic projection of the structured home summary, not another work inventory: its private record contains only the last delivered fingerprint, transition sequence, and verb.
-It reports healthy active children, real stalls with recommended Firstmate help, declared external waits, and genuinely open captain decisions together; unchanged projections stay silent.
+It reports healthy active children, real stalls with recommended Firstmate help, declared external waits, known captain deferrals, genuinely open captain decisions, invalid summaries, and bounded-summary omissions together; unchanged projections stay silent.
+Omitted captain decisions keep the aggregate report in `needs-decision`, while other omitted child surfaces keep it visibly incomplete instead of resolving idle.
 Every changed projection explicitly resolves the prior stable report key before publishing its replacement, so a recovered child, answered decision, or empty fleet cannot leave old actionable wording open.
 
 ## What is deliberately not built
 
 - No mirror of the mate's chat: chat can mix outcomes with other conversation, so choosing which sentence is an outcome would itself be model behavior, and every harness exposes turn text differently.
-- No prose inference from a child's conversation: only decisions, blockers, waits, and progress already classified in the authoritative home summary can enter the fleet report.
+- No prose inference from a child's conversation: only decisions, blockers, waits, progress, deferrals, invalidity, and omission counts already classified in the authoritative home summary can enter the fleet report.
 - No second watcher or standalone scanner: a lightweight ledger pass runs inside the existing inactive-outcome command on every watcher poll and reuses its receipts and upstream append.
 - No orphan lifecycle: teardown refuses instead of removing an undelivered outcome, the same way it refuses on other unlanded conditions.
 
@@ -59,7 +60,8 @@ Every changed projection explicitly resolves the prior stable report key before 
 `tests/fm-teardown.test.sh` covers teardown delivering a child's final line and refusing when the channel cannot be written.
 `tests/fm-brief.test.sh` pins the charter's channel rule.
 `tests/fm-pending-reply.test.sh` covers helper-selected local routing, remote-channel classification, same-basename restatement before false escalation, readable wrong-home diagnostics, and the rule that arbitrary mate-home sightings never acknowledge a reply.
-`tests/fm-secondmate-fleet-report.test.sh` covers one active multi-child fleet containing healthy progress, a real stall, a known external wait, and a captain decision, plus unchanged silence and resolution back through healthy work to idle without stale open decisions.
+`tests/fm-secondmate-fleet-report.test.sh` covers one active multi-child fleet containing healthy progress, a real stall, a known external wait, and a captain decision, plus unchanged silence, resolution back through healthy work to idle without stale open decisions, distinct keyed decisions and blockers, untruncated semantic identity, captain deferrals, backlog external holds, omitted-surface disclosure, and invalid summaries surfacing as stalls.
+`tests/fm-fleet-snapshot-view.test.sh` covers the home-summary held-child overflow count that feeds the report's omitted-surface disclosure.
 `tests/fm-spawn-dispatch-profile.test.sh` and `tests/fm-wake-queue.test.sh` prove that a real Second Mate launch supplies the semantic active-turn evidence used to defer false wake-loop stalls while retaining the bounded stuck-turn escalation.
 
 The reporting projection and parent-channel transport are file-based and therefore do not vary by primary harness or runtime backend.
