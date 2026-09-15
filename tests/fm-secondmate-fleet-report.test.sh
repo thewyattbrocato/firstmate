@@ -82,6 +82,39 @@ EOF
 }
 EOF
       ;;
+    decision-keys)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":true,
+  "reason":null,
+  "invalidity":{"kind":null,"ids":[]},
+  "state":"captain_decision",
+  "active_children":[],
+  "decisions_open":[
+    {"id":"phase8","key":"api","verb":"needs-decision","summary":"API path"},
+    {"id":"phase8","key":"db","verb":"needs-decision","summary":"Database path"}
+  ],
+  "holds":[],"queued":[],"landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
+    invalid-orphan)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":false,
+  "reason":"in-flight backlog item has no child metadata",
+  "invalidity":{"kind":"orphan_in_flight","ids":["phase8"]},
+  "state":"unknown",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
   esac
 }
 
@@ -141,3 +174,17 @@ run_reporter || fail "idle retry failed"
 [ "$(grep -c 'No active child work' "$STATUS")" -eq 1 ] \
   || fail "unchanged idle state emitted another report"
 pass "active work resolves idempotently back to idle"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary decision-keys
+run_reporter || fail "keyed captain decisions did not publish"
+grep -F 'Captain feedback needed: API path - decision required; Database path - decision required' "$STATUS" >/dev/null \
+  || fail "distinct keyed decisions from one child were collapsed: $(cat "$STATUS")"
+pass "distinct keyed captain decisions from one child are all reported"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary invalid-orphan
+run_reporter || fail "invalid orphan summary did not publish"
+grep -F 'blocked [key=secondmate-fleet]: Stalled: orphan_in_flight - in-flight backlog item has no child metadata' "$STATUS" >/dev/null \
+  || fail "invalid summary was not surfaced as a stalled fleet report: $(cat "$STATUS" 2>/dev/null || true)"
+pass "invalid authoritative home summaries surface as stalled reports"
