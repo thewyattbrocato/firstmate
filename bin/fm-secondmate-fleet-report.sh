@@ -73,37 +73,37 @@ projection=$(jq -cS '
   def text($n):
     tostring | gsub("[\\t\\r\\n]+"; " ") | gsub("  +"; " ")
     | if length > $n then .[:$n] else . end;
-  def item($id; $label; $reason):
-    {id:($id | text(80)),label:($label | text(100)),reason:($reason | text(160))};
+  def item($id; $key; $label; $reason):
+    {id:($id | text(80)),key:($key | text(100)),label:($label | text(100)),reason:($reason | text(160))};
   def items_text:
     map(.label + (if .reason == "" then "" else " - " + .reason end)) | join("; ");
   if .schema != "fm-secondmate-home-summary.v1" then error("unsupported home-summary schema") else . end
   | ([.active_children[]?
-      | item(.id; (.name // .id); (.doing // "in progress"))] | unique_by(.id)) as $healthy
+      | item(.id; .id; (.name // .id); (.doing // "in progress"))] | unique_by(.id)) as $healthy
   | ([.decisions_open[]?
       | select(.verb == "needs-decision" or .verb == "captain-hold")
-      | item(.id; (.summary // .id); (.reason // "decision required"))] | unique_by([.id, .reason])) as $captain
+      | item(.id; (.key // .summary // .id); (.summary // .id); (.reason // "decision required"))] | unique_by([.id, .key, .reason])) as $captain
   | ([.decisions_open[]?
       | select(.verb == "blocked")
-      | item(.id; (.summary // .id); (.reason // "blocked"))]
+      | item(.id; (.key // .summary // .id); (.summary // .id); (.reason // "blocked"))]
       + [.holds[]?
          | select(.source == "child-state" and (.state == "blocked" or .state == "parked"))
-         | item(.id; (.title // .id); (.reason // .state))]
+         | item(.id; .id; (.title // .id); (.reason // .state))]
       + [.queued[]?
          | select((.unresolved_blocker_ids // [] | length) > 0)
-         | item(.id; (.title // .id);
+         | item(.id; .id; (.title // .id);
              (if (.blocked_reason // "") != "" then .blocked_reason
               else "waiting on " + (.unresolved_blocker_ids | join(", ")) end))]
-      + [if .valid == false and .invalidity.kind == "child_current_unavailable" then
-           item("home-summary"; "child state unavailable"; (.reason // "current progress cannot be verified"))
+      + [if .valid == false then
+           item("home-summary"; (.invalidity.kind // "invalid"); (.invalidity.kind // "invalid home summary"); (.reason // "current progress cannot be verified"))
          else empty end]
       | unique_by([.id, .reason])) as $stalled
   | ([.holds[]?
       | select(.source == "child-state" and .state == "paused")
-      | item(.id; (.title // .id); (.reason // "external wait"))]
+      | item(.id; .id; (.title // .id); (.reason // "external wait"))]
       + [.queued[]?
          | select(.hold_bucket == "dated" or .hold_bucket == "aged")
-         | item(.id; (.title // .id); (.hold_reason // "external wait"))]
+         | item(.id; .id; (.title // .id); (.hold_reason // "external wait"))]
       | unique_by([.id, .reason])) as $waiting
   | (if ($captain | length) > 0 then "needs-decision"
      elif ($stalled | length) > 0 then "blocked"
