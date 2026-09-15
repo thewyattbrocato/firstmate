@@ -97,7 +97,7 @@ projection=$(jq -cS '
       + [if .valid == false then
            item("home-summary"; (.invalidity.kind // "invalid"); (.invalidity.kind // "invalid home summary"); (.reason // "current progress cannot be verified"))
          else empty end]
-      | unique_by([.id, .reason])) as $stalled
+      | unique_by([.id, .key, .reason])) as $stalled
   | ([.holds[]?
       | select(.source == "child-state" and .state == "paused")
       | item(.id; .id; (.title // .id); (.reason // "external wait"))]
