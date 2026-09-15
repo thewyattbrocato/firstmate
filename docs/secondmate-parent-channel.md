@@ -30,6 +30,7 @@ Every captain-facing outcome that leaves durable evidence in the mate home is pu
 | Child leaving the home | its final ledger line | `bin/fm-teardown.sh`, which refuses to remove the child while that line is undelivered |
 | Child ended silently | terminal current state with a silent ledger | the existing inactive-outcome scan in `bin/fm-inactive-reconcile.sh` |
 | Answer to a marked request | a correlated line guarded by the pending-reply record | `bin/fm-secondmate-report.sh`, which resolves the parent channel from the mate home; the pending-reply guard repairs a line stranded in the local mate's same-basename status file before recovery or escalation |
+| Current child fleet changes | the authoritative structured `state/home-summary.json` | `bin/fm-secondmate-fleet-report.sh`, invoked by the summary publisher while its refresh lock is held |
 | An outcome that exists only in the mate's reasoning | none | the charter and the `AGENTS.md` carve-outs only |
 
 The ledger delivery reads files only: it calls no harness, no forge, and no current-state reader, so it is identical for every harness and runtime backend.
@@ -39,11 +40,14 @@ For marked replies, the report helper accepts no caller-selected destination and
 The pending-reply guard may restate only the correlated line from a local mate's `state/<mate-id>.status` onto the parent channel, which repairs the common parent-home versus mate-home mixup without accepting arbitrary mate-home sightings as acknowledgement.
 Other correlated mate-home status lines remain wrong-home evidence, while a remote home's routed `state/parent-replies.status` is already the parent channel and is not classified as wrong-home.
 A missed-reply escalation includes the complete first sighting path and line number in readable shell-escaped form.
+The child-fleet report is a semantic projection of the structured home summary, not another work inventory: its private record contains only the last delivered fingerprint, transition sequence, and verb.
+It reports healthy active children, real stalls with recommended Firstmate help, declared external waits, and genuinely open captain decisions together; unchanged projections stay silent.
+Every changed projection explicitly resolves the prior stable report key before publishing its replacement, so a recovered child, answered decision, or empty fleet cannot leave old actionable wording open.
 
 ## What is deliberately not built
 
 - No mirror of the mate's chat: chat can mix outcomes with other conversation, so choosing which sentence is an outcome would itself be model behavior, and every harness exposes turn text differently.
-- No threshold escalation of a child's open decision or blocker: a decision the mate escalates is a captain hold, which is published; a decision the mate neither answers nor escalates is a supervision-quality question, separable from channel delivery.
+- No prose inference from a child's conversation: only decisions, blockers, waits, and progress already classified in the authoritative home summary can enter the fleet report.
 - No second watcher or standalone scanner: a lightweight ledger pass runs inside the existing inactive-outcome command on every watcher poll and reuses its receipts and upstream append.
 - No orphan lifecycle: teardown refuses instead of removing an undelivered outcome, the same way it refuses on other unlanded conditions.
 
@@ -55,6 +59,12 @@ A missed-reply escalation includes the complete first sighting path and line num
 `tests/fm-teardown.test.sh` covers teardown delivering a child's final line and refusing when the channel cannot be written.
 `tests/fm-brief.test.sh` pins the charter's channel rule.
 `tests/fm-pending-reply.test.sh` covers helper-selected local routing, remote-channel classification, same-basename restatement before false escalation, readable wrong-home diagnostics, and the rule that arbitrary mate-home sightings never acknowledge a reply.
+`tests/fm-secondmate-fleet-report.test.sh` covers one active multi-child fleet containing healthy progress, a real stall, a known external wait, and a captain decision, plus unchanged silence and resolution back through healthy work to idle without stale open decisions.
+`tests/fm-spawn-dispatch-profile.test.sh` and `tests/fm-wake-queue.test.sh` prove that a real Second Mate launch supplies the semantic active-turn evidence used to defer false wake-loop stalls while retaining the bounded stuck-turn escalation.
+
+The reporting projection and parent-channel transport are file-based and therefore do not vary by primary harness or runtime backend.
+The supported primary supervision protocols (Claude, Codex, Cursor, Grok, OpenCode, Pi, Pi-signed, and OMP) were inspected at their common watcher boundary; the child-fleet report has no harness-specific branch.
+The tmux, Herdr, Zellij, Orca, and cmux backend surfaces were inspected at parent-channel resolution and summary publication; local and remote routes share the same report contract, while active-turn deferral remains available only where the selected harness exposes verified semantic evidence.
 
 ## Live verification
 

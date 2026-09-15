@@ -379,7 +379,8 @@ family_for_basename() {
       printf '%s\n' afk
       ;;
     fm-bearings-board-render.test.sh|fm-bearings-snapshot.test.sh|\
-    fm-fleet-snapshot-view.test.sh|fm-home-summary-refresh.test.sh)
+    fm-fleet-snapshot-view.test.sh|fm-home-summary-refresh.test.sh|\
+    fm-secondmate-fleet-report.test.sh)
       printf '%s\n' snapshot-bearings
       ;;
     fm-backend-cmux.test.sh|fm-backend-cmux-smoke.test.sh)
@@ -715,6 +716,7 @@ tests/fm-herdr-session-cleanup.test.sh 6704
 tests/fm-herdr-submit-confirm-live-e2e.test.sh 23
 tests/fm-herdr-version-floor-live-e2e.test.sh 23
 tests/fm-home-summary-refresh.test.sh 34793
+tests/fm-secondmate-fleet-report.test.sh 5700
 tests/fm-inactive-reconcile.test.sh 74399
 tests/fm-kimi-harness.test.sh 18015
 tests/fm-lint-workflows.test.sh 855
@@ -1386,6 +1388,10 @@ families_for_changed_path() {
     bin/fm-startup-memory-budget.sh|bin/fm-startup-memory-budget-lib.sh)
       printf '%s\n' secondmate
       printf '%s\n' session-bootstrap
+      ;;
+    bin/fm-secondmate-fleet-report.sh)
+      printf '%s\n' secondmate
+      printf '%s\n' snapshot-bearings
       ;;
     bin/fm-secondmate*|bin/fm-remote*|bin/fm-on.sh|bin/fm-home-seed.sh|\
     bin/fm-backlog-handoff.sh|bin/fm-backlog-receive.sh|bin/fm-procevent-remote-reply.sh|\

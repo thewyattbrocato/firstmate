@@ -792,8 +792,14 @@ test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   assert_absent "$HOME_DIR/data/$id/launch-brief.md" "secondmate launch received a worker overlay"
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "< '$sm/data/charter.md'" "secondmate launch lost its original charter"
-  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular -e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts'" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular -e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts' -e '$HOME_DIR/state/$id.pi-ext.ts'" \
     "pi-signed secondmate did not force the regular TUI with Pi's primary extension launch shape"
+  assert_present "$HOME_DIR/state/$id.busy-state" \
+    "pi-signed secondmate launch did not seed parent-observed busy state"
+  assert_present "$HOME_DIR/state/$id.pi-ext.ts" \
+    "pi-signed secondmate launch did not install parent-observed lifecycle wiring"
+  assert_grep 'busy_gen=' "$HOME_DIR/state/$id.meta" \
+    "pi-signed secondmate metadata did not bind its busy-state generation"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
     printf '# evidence begin: persistent secondmate\n%s\n' "$out"
     printf 'launch command:\n%s\noriginal charter:\n' "$launch"
