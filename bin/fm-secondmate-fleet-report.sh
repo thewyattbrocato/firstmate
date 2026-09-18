@@ -32,9 +32,6 @@ RECEIPT="$STATE/.secondmate-fleet-report.json"
 # shellcheck source=bin/fm-parent-channel-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-parent-channel-lib.sh"
-# shellcheck source=bin/fm-wake-lib.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/fm-wake-lib.sh"
 
 die() {
   printf 'fm-secondmate-fleet-report: %s\n' "$1" >&2
@@ -66,34 +63,14 @@ write_receipt() {  # <fingerprint> <verb> <sequence>
   fi
 }
 
-summary_has_provisional_unowned_child() {
-  local id lock
-  while IFS= read -r id; do
-    [ -n "$id" ] || continue
-    lock=$(fm_meta_lock_path "$STATE/$id.meta" 2>/dev/null) || continue
-    if fm_lock_try_acquire "$lock"; then
-      fm_lock_release "$lock" || true
-      continue
-    fi
-    return 0
-  done <<EOF
-$(jq -r '
-    select(.schema == "fm-secondmate-home-summary.v1")
-    | select(.invalidity.kind == "unowned_current")
-    | .invalidity.ids[]?
-    | tostring
-  ' "$SUMMARY")
-EOF
-  return 1
-}
-
 [ -e "$FM_HOME/.fm-secondmate-home" ] || exit 0
 [ -e "$FM_HOME/.fm-secondmate-parent" ] || exit 0
 command -v jq >/dev/null 2>&1 || die "jq is required"
 [ -f "$SUMMARY" ] && [ ! -L "$SUMMARY" ] \
   || die "authoritative home summary is unavailable"
 
-if summary_has_provisional_unowned_child; then
+if jq -e '.schema == "fm-secondmate-home-summary.v1" and .invalidity.kind == "unowned_current"' \
+    "$SUMMARY" >/dev/null 2>&1; then
   exit 0
 fi
 

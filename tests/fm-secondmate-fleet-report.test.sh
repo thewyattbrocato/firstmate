@@ -394,31 +394,8 @@ pass "invalid authoritative home summaries surface as stalled reports"
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary invalid-unowned
 printf 'kind=ship\n' > "$MATE/state/provisional.meta"
-LOCK_MARKER="$TMP_ROOT/provisional-lock-held"
-FM_HOME="$MATE" FM_STATE_OVERRIDE="$MATE/state" bash -c '
-  . "$1/bin/fm-wake-lib.sh"
-  lock=$(fm_meta_lock_path "$2/state/provisional.meta") || exit 1
-  fm_lock_acquire_wait "$lock"
-  : > "$3"
-  trap '"'"'fm_lock_release "$lock"; exit 0'"'"' TERM INT EXIT
-  while :; do sleep 1; done
-' _ "$ROOT" "$MATE" "$LOCK_MARKER" &
-LOCK_HOLDER_PID=$!
-i=0
-while [ ! -e "$LOCK_MARKER" ] && [ "$i" -lt 100 ]; do
-  kill -0 "$LOCK_HOLDER_PID" 2>/dev/null || break
-  sleep 0.05
-  i=$((i + 1))
-done
-[ -e "$LOCK_MARKER" ] || fail "could not hold the provisional child metadata lock"
-run_reporter || fail "locked unowned summary should defer without failing"
-assert_absent "$STATUS" "locked provisional unowned child published a parent-facing blocker"
+run_reporter || fail "unowned-current summary should defer without failing"
+assert_absent "$STATUS" "stale unowned-current summary published a parent-facing blocker"
 assert_absent "$MATE/state/.secondmate-fleet-report.json" \
-  "locked provisional unowned child recorded a delivered report receipt"
-kill "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
-wait "$LOCK_HOLDER_PID" >/dev/null 2>&1 || true
-LOCK_HOLDER_PID=
-run_reporter || fail "unlocked unowned summary did not publish"
-grep -F 'blocked [key=secondmate-fleet]: Stalled: unowned_current - live child state has no in-flight backlog item: provisional=working' "$STATUS" >/dev/null \
-  || fail "unlocked unowned summary was not surfaced as a stalled fleet report: $(cat "$STATUS" 2>/dev/null || true)"
-pass "provisional unowned children defer while their task metadata lock is held"
+  "stale unowned-current summary recorded a delivered report receipt"
+pass "unowned-current summaries defer instead of publishing stale spawn races"
