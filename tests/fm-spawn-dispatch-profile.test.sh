@@ -1008,6 +1008,37 @@ test_claude_secondmate_launch_carries_the_attribution_policy() {
   pass "a claude secondmate launch carries the attribution-off policy too"
 }
 
+test_claude_secondmate_launch_preserves_home_local_settings() {
+  local rec id sm out status launch settings before
+  id=profile-secondmate-claude-settings-z23b
+  rec=$(make_spawn_case profile-secondmate-claude-settings claude "$id")
+  read_case_record "$rec"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+  mkdir -p "$sm/.claude"
+  settings="$sm/.claude/settings.local.json"
+  before="$CASE_DIR/settings-before.json"
+  printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"printf owned"}]}]},"permissions":{"deny":["Agent"]}}\n' > "$settings"
+  cp "$settings" "$before"
+
+  out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/claude-work" \
+    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+  status=$?
+  expect_code 0 "$status" "secondmate claude spawn should succeed"$'\n'"$out"
+  cmp -s "$before" "$settings" \
+    || fail "claude secondmate spawn rewrote home-owned settings.local.json"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" '"hooks":{"UserPromptSubmit"' \
+    "claude secondmate launch did not carry launch-scoped busy hooks"
+  assert_contains "$launch" '--source claude-hook' \
+    "claude secondmate launch hooks were not bound to the busy-state writer"
+  assert_present "$HOME_DIR/state/$id.busy-state" \
+    "claude secondmate launch did not seed parent-observed busy state"
+  assert_grep 'busy_gen=' "$HOME_DIR/state/$id.meta" \
+    "claude secondmate metadata did not bind its busy-state generation"
+  pass "a claude secondmate keeps home-local settings while launch-scoping busy hooks"
+}
+
 test_active_dispatch_profile_does_not_block_secondmate_launch() {
   local rec id sm out status
   id=profile-secondmate-z16
@@ -1466,6 +1497,7 @@ test_claude_task_launch_carries_control_channel_authority
 test_claude_secondmate_launch_omits_task_control_channel_authority
 test_claude_crewmate_launch_carries_the_attribution_policy
 test_claude_secondmate_launch_carries_the_attribution_policy
+test_claude_secondmate_launch_preserves_home_local_settings
 test_active_dispatch_profile_does_not_block_secondmate_launch
 
 echo "# all fm-spawn-dispatch-profile tests passed"
