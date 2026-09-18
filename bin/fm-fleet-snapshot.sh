@@ -1043,6 +1043,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file> <curre
          | select(.id as $id | [$owned_in_flight[].id] | index($id) | not)
          | {id,state:.current_state.state,
             provisional:((.paths.meta.locked == true) or (.id as $id | [$current_owned_in_flight[].id] | index($id) != null))} ]) as $unowned_children
+    | ([ $unowned_children[] | select(.provisional | not) ]) as $durable_unowned_children
     | ([ $owned_in_flight[] as $work
          | $tasks[]
          | select(.kind != "secondmate")
@@ -1059,9 +1060,10 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file> <curre
            reason:("in-flight backlog item has no child metadata: " + ($orphan_in_flight | map(.id) | join(", ")))}
         else empty end,
         if ($unowned_children | length) > 0 then
-          {kind:"unowned_current",ids:($unowned_children | map(.id)),
+          (if ($durable_unowned_children | length) > 0 then $durable_unowned_children else $unowned_children end) as $reported_unowned_children
+          | {kind:"unowned_current",ids:($reported_unowned_children | map(.id)),
            reason:("live child state has no in-flight backlog item: " +
-                   ($unowned_children | map(.id + "=" + .state) | join(", ")))}
+                   ($reported_unowned_children | map(.id + "=" + .state) | join(", ")))}
           + (([ $unowned_children[] | select(.provisional) | .id ]) as $provisional_ids
              | if ($provisional_ids | length) > 0
                then {provisional_ids:$provisional_ids}

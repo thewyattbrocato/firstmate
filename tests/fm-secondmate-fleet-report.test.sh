@@ -277,6 +277,22 @@ EOF
 }
 EOF
       ;;
+    invalid-unowned-mixed)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":false,
+  "reason":"live child state has no in-flight backlog item: stale=blocked",
+  "invalidity":{"kind":"unowned_current","ids":["stale"],"provisional_ids":["launching"]},
+  "state":"no_active_work",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
   esac
 }
 
@@ -413,6 +429,13 @@ run_reporter || fail "durable unowned-current summary did not publish"
 grep -F 'blocked [key=secondmate-fleet]: Stalled: unowned_current - live child state has no in-flight backlog item: provisional=working' "$STATUS" >/dev/null \
   || fail "durable unowned-current summary was not surfaced as a stalled fleet report: $(cat "$STATUS" 2>/dev/null || true)"
 pass "durable unowned-current summaries surface as stalled reports"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary invalid-unowned-mixed
+run_reporter || fail "mixed unowned-current summary did not publish"
+grep -F 'blocked [key=secondmate-fleet]: Stalled: unowned_current - live child state has no in-flight backlog item: stale=blocked' "$STATUS" >/dev/null \
+  || fail "mixed provisional and durable unowned-current summary was not surfaced: $(cat "$STATUS" 2>/dev/null || true)"
+pass "mixed unowned-current summaries still report durable stuck children"
 
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary invalid-unowned-provisional

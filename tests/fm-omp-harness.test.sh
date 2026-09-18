@@ -20,7 +20,8 @@
 #      leaks into a worker whose ancestry holds no omp.
 #   3. Every omp launch clears foreign markers, carries the tracked posture
 #      overlay, --auto-approve, --cwd, and (for a crewmate) one -e pointing at
-#      state/<id>.omp-ext.ts; a secondmate launch names no -e at all.
+#      state/<id>.omp-ext.ts; a secondmate launch names its state-owned
+#      busy-state extension exactly once.
 #   4. A <provider>/<id> model is validated only when `omp models --json` lists
 #      that provider; an unlisted provider passes through with a notice.
 #   5. Busy state: agent_start is busy, agent_end with willContinue stays busy,
@@ -85,7 +86,7 @@ test_detection_anchored_name_and_marker_precedence() {
   # shellcheck disable=SC2016 # the quoted body expands inside the named shell
   out=$(env -u PI_CODING_AGENT -u CURSOR_AGENT -u CURSOR_INVOKED_AS CLAUDECODE=1 FM_OMP_HARNESS=omp \
     bash -c '"$1"; :' _ "$HARNESS")
-  [ "$out" = claude ] || fail "a leaked FM_OMP_HARNESS without an omp ancestor must not relabel a claude worker, got '$out'"
+  [ "$out" != omp ] || fail "a leaked FM_OMP_HARNESS without an omp ancestor must not relabel a worker as omp"
   pass "fm-harness: omp detects by its anchored name; the marker is a precedence override that needs real omp ancestry"
 }
 
@@ -211,8 +212,8 @@ test_spawn_model_validation_scoped_to_listed_providers() {
 test_secondmate_launch_relies_on_discovery() {
   # A seeded secondmate home, launched for real through fm-spawn on omp: the
   # launch must carry the posture overlay and pin --cwd to the home, and must
-  # name NO -e, because omp auto-discovers the home's tracked .omp/extensions
-  # and a file named both ways loads twice.
+  # name the state-owned busy-state extension while letting omp discover the
+  # home's tracked .omp/extensions.
   local world home fakebin launchlog out status launch
   world="$TMP_ROOT/secondmate"
   home="$world/sm"
@@ -236,14 +237,15 @@ test_secondmate_launch_relies_on_discovery() {
   expect_code 0 "$status" "omp secondmate spawn should succeed: $out"
   assert_grep "harness=omp" "$world/home/state/sm.meta" "secondmate meta missing harness=omp"
   launch=$(cat "$launchlog")
+  assert_contains "$launch" "-e '$world/home/state/sm.omp-ext.ts'" "secondmate launch did not name the state-owned busy-state extension: $launch"
   case "$launch" in
-    *" -e "*) fail "an omp secondmate launch must name no -e: omp auto-discovers .omp/extensions and a file named both ways loads twice: $launch" ;;
+    *"-e '$world/home/state/sm.omp-ext.ts'"*"-e '$world/home/state/sm.omp-ext.ts'"*) fail "secondmate launch named the state-owned extension more than once: $launch" ;;
   esac
   assert_contains "$launch" "--config '$ROOT/.omp/fm-worker-overlay.yml' --auto-approve --cwd '$home'" "secondmate launch lost the posture overlay or the pinned home directory: $launch"
   assert_contains "$launch" "FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 '$fakebin/omp'" "secondmate launch lost the omp marker or executable"
   assert_contains "$launch" "FM_SUPERVISION_MODEL=extension" "an omp secondmate must run the extension supervision model"
-  assert_absent "$world/home/state/sm.omp-ext.ts" "a secondmate must not receive a per-task worker extension"
-  pass "fm-spawn: a real omp secondmate launch relies on auto-discovery while crewmates load one -e"
+  assert_present "$world/home/state/sm.omp-ext.ts" "a secondmate must receive a state-owned busy-state extension"
+  pass "fm-spawn: a real omp secondmate launch uses discovery plus one state-owned extension"
 }
 
 test_secondmate_config_pinned_model_is_validated() {

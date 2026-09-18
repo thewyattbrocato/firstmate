@@ -1095,7 +1095,42 @@ EOF
       and (.reason | contains("mate=") | not)
   ' >/dev/null || fail "locked unowned ship must be marked provisional: $out"
 
-  rm -f "$home/state/unowned-ship.meta" "$home/state/unowned-ship.status"
+  fm_write_meta "$home/state/stale-ship.meta" \
+    "window=firstmate:fm-stale-ship" \
+    "worktree=$home/projects/stale" \
+    "project=alpha" \
+    "harness=claude" \
+    "kind=ship" \
+    "mode=no-mistakes"
+  record_claude_idle "$home/state" stale-ship
+  printf 'needs-decision [key=stale-ship]: choose cleanup\n' > "$home/state/stale-ship.status"
+  rm -f "$holder" "$release"
+  FM_STATE_OVERRIDE="$home/state" bash -c '
+    . "$1"
+    fm_lock_try_acquire "$2" || exit 1
+    touch "$3"
+    while [ ! -e "$4" ]; do sleep 0.05; done
+    fm_lock_release "$2"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" "$holder" "$release" &
+  holder_pid=$!
+  i=0
+  while [ ! -e "$holder" ] && [ "$i" -lt 100 ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -e "$holder" ] || fail "meta lock holder did not restart"
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary)
+  touch "$release"
+  wait "$holder_pid" || fail "meta lock holder failed in mixed case"
+  printf '%s' "$out" | jq -e '
+    .valid == false
+      and .invalidity == {kind:"unowned_current",ids:["stale-ship"],provisional_ids:["unowned-ship"]}
+      and (.reason | contains("stale-ship=unknown"))
+      and (.reason | contains("unowned-ship=") | not)
+      and (.reason | contains("mate=") | not)
+  ' >/dev/null || fail "mixed provisional and durable unowned ships must report only the durable invalidity: $out"
+
+  rm -f "$home/state/unowned-ship.meta" "$home/state/unowned-ship.status" "$home/state/stale-ship.meta" "$home/state/stale-ship.status"
   cat > "$home/data/backlog.md" <<'EOF'
 ## In flight
 - [ ] terminal-ship - Done child still in flight (repo: alpha) (kind: ship) (since 2026-07-11)

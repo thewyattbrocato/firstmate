@@ -71,7 +71,10 @@ command -v jq >/dev/null 2>&1 || die "jq is required"
 
 if jq -e '.schema == "fm-secondmate-home-summary.v1"
     and .invalidity.kind == "unowned_current"
-    and ((.invalidity.provisional_ids // []) | length) > 0' "$SUMMARY" >/dev/null 2>&1; then
+    and ((.invalidity.ids // []) as $ids
+      | (.invalidity.provisional_ids // []) as $provisional
+      | ($ids | length) > 0
+        and all($ids[]; . as $id | ($provisional | index($id) != null)))' "$SUMMARY" >/dev/null 2>&1; then
   exit 0
 fi
 
