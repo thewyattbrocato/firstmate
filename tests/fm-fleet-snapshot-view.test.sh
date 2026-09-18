@@ -1055,16 +1055,25 @@ EOF
     "project=alpha" \
     "harness=claude" \
     "kind=ship" \
-    "mode=no-mistakes"
+    "mode=no-mistakes" \
+    "spawn_gen=s1700000000.1.1"
   record_claude_idle "$home/state" unowned-ship
   printf 'needs-decision [key=unowned-ship]: choose a route\n' > "$home/state/unowned-ship.status"
-  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary)
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW_EPOCH=1700000001 "$SNAPSHOT" --secondmate-home-summary)
   printf '%s' "$out" | jq -e '
     .valid == false
       and .invalidity == {kind:"unowned_current",ids:["unowned-ship"]}
       and (.reason | contains("unowned-ship=parked"))
       and (.reason | contains("mate=") | not)
   ' >/dev/null || fail "ordinary unowned ship must still produce unowned_current without listing the secondmate: $out"
+
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW_EPOCH=1700000000 "$SNAPSHOT" --secondmate-home-summary)
+  printf '%s' "$out" | jq -e '
+    .valid == false
+      and .invalidity == {kind:"unowned_current",ids:["unowned-ship"],provisional_ids:["unowned-ship"]}
+      and (.reason | contains("unowned-ship=parked"))
+      and (.reason | contains("mate=") | not)
+  ' >/dev/null || fail "same-snapshot spawned unowned ship must be marked provisional: $out"
 
   rm -f "$home/state/unowned-ship.meta" "$home/state/unowned-ship.status"
   cat > "$home/data/backlog.md" <<'EOF'

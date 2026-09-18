@@ -261,6 +261,22 @@ EOF
 }
 EOF
       ;;
+    invalid-unowned-provisional)
+      cat > "$MATE/state/home-summary.json" <<EOF
+{
+  "schema":"fm-secondmate-home-summary.v1",
+  "valid":false,
+  "reason":"live child state has no in-flight backlog item: provisional=working",
+  "invalidity":{"kind":"unowned_current","ids":["provisional"],"provisional_ids":["provisional"]},
+  "state":"no_active_work",
+  "active_children":[],
+  "decisions_open":[],
+  "holds":[],
+  "queued":[],
+  "landed":[],"endpoints":[],"counts":{},"omitted":[]
+}
+EOF
+      ;;
   esac
 }
 
@@ -393,9 +409,15 @@ pass "invalid authoritative home summaries surface as stalled reports"
 
 rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
 write_summary invalid-unowned
-printf 'kind=ship\n' > "$MATE/state/provisional.meta"
-run_reporter || fail "unowned-current summary should defer without failing"
-assert_absent "$STATUS" "stale unowned-current summary published a parent-facing blocker"
+run_reporter || fail "durable unowned-current summary did not publish"
+grep -F 'blocked [key=secondmate-fleet]: Stalled: unowned_current - live child state has no in-flight backlog item: provisional=working' "$STATUS" >/dev/null \
+  || fail "durable unowned-current summary was not surfaced as a stalled fleet report: $(cat "$STATUS" 2>/dev/null || true)"
+pass "durable unowned-current summaries surface as stalled reports"
+
+rm -f "$STATUS" "$MATE/state/.secondmate-fleet-report.json"
+write_summary invalid-unowned-provisional
+run_reporter || fail "provisional unowned-current summary should defer without failing"
+assert_absent "$STATUS" "provisional unowned-current summary published a parent-facing blocker"
 assert_absent "$MATE/state/.secondmate-fleet-report.json" \
-  "stale unowned-current summary recorded a delivered report receipt"
-pass "unowned-current summaries defer instead of publishing stale spawn races"
+  "provisional unowned-current summary recorded a delivered report receipt"
+pass "provisional unowned-current summaries defer during spawn races"

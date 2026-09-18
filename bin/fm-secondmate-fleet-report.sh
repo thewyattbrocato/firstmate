@@ -69,8 +69,9 @@ command -v jq >/dev/null 2>&1 || die "jq is required"
 [ -f "$SUMMARY" ] && [ ! -L "$SUMMARY" ] \
   || die "authoritative home summary is unavailable"
 
-if jq -e '.schema == "fm-secondmate-home-summary.v1" and .invalidity.kind == "unowned_current"' \
-    "$SUMMARY" >/dev/null 2>&1; then
+if jq -e '.schema == "fm-secondmate-home-summary.v1"
+    and .invalidity.kind == "unowned_current"
+    and ((.invalidity.provisional_ids // []) | length) > 0' "$SUMMARY" >/dev/null 2>&1; then
   exit 0
 fi
 

@@ -972,6 +972,11 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
       | if ($filed | type) != "string" then null
         elif ($filed | test("T")) then try ($filed | fromdateiso8601) catch null
         else try (($filed + "T00:00:00Z") | fromdateiso8601) catch null end;
+    def spawn_epoch:
+      (.spawn_gen // "" | tostring) as $gen
+      | if ($gen | test("^s[0-9]+\\."))
+        then try ($gen[1:] | split(".")[0] | tonumber) catch null
+        else null end;
     def newest_filed_first:
       to_entries
       | sort_by((.value | filed_epoch) as $epoch
@@ -1008,7 +1013,8 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
     | ([ $tasks[]
          | select(.kind != "secondmate")
          | select(.id as $id | [$owned_in_flight[].id] | index($id) | not)
-         | {id,state:.current_state.state} ]) as $unowned_children
+         | {id,state:.current_state.state,
+            provisional:((. | spawn_epoch) as $epoch | $epoch != null and $epoch >= $generated_epoch)} ]) as $unowned_children
     | ([ $owned_in_flight[] as $work
          | $tasks[]
          | select(.kind != "secondmate")
@@ -1028,6 +1034,10 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
           {kind:"unowned_current",ids:($unowned_children | map(.id)),
            reason:("live child state has no in-flight backlog item: " +
                    ($unowned_children | map(.id + "=" + .state) | join(", ")))}
+          + (([ $unowned_children[] | select(.provisional) | .id ]) as $provisional_ids
+             | if ($provisional_ids | length) > 0
+               then {provisional_ids:$provisional_ids}
+               else {} end)
         else empty end,
         if ($terminal_in_flight | length) > 0 then
           {kind:"terminal_in_flight",ids:($terminal_in_flight | map(.id)),
