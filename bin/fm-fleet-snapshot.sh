@@ -222,6 +222,9 @@ esac
 . "$SCRIPT_DIR/fm-landed-lib.sh"  # FM_LANDED_JQ_DEFS: the shared landed selector
 # shellcheck source=bin/fm-merge-authority-lib.sh
 . "$SCRIPT_DIR/fm-merge-authority-lib.sh"
+# shellcheck source=bin/fm-wake-lib.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-wake-lib.sh"
 
 usage() {
   cat <<'EOF'
@@ -678,7 +681,7 @@ prefetch_task_observations() {  # <meta> <id>
 # window rather than five in series, while every command bound remains owned by
 # fm-timeout-lib.sh.
 prefetch_task_current_states() {
-  local meta captured_meta id active=0 index=0 rc=0
+  local meta captured_meta id meta_lock active=0 index=0 rc=0
   local -a pids=()
   snapshot_task_cleanup
   SNAPSHOT_TASK_DIR=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/fm-fleet-tasks.XXXXXX") || return 1
@@ -702,6 +705,26 @@ prefetch_task_current_states() {
       return 1
     fi
     rm -f -- "$captured_meta.copy-error"
+    meta_lock=$(fm_meta_lock_path "$meta") || {
+      snapshot_task_cleanup
+      return 1
+    }
+    if fm_lock_try_acquire "$meta_lock"; then
+      printf 'false\n' > "$SNAPSHOT_TASK_DIR/$id.meta-locked" || {
+        fm_lock_release "$meta_lock" || true
+        snapshot_task_cleanup
+        return 1
+      }
+      fm_lock_release "$meta_lock" || {
+        snapshot_task_cleanup
+        return 1
+      }
+    else
+      printf 'true\n' > "$SNAPSHOT_TASK_DIR/$id.meta-locked" || {
+        snapshot_task_cleanup
+        return 1
+      }
+    fi
     SNAPSHOT_TASK_METAS[SNAPSHOT_TASK_META_COUNT]=$captured_meta
     SNAPSHOT_TASK_META_COUNT=$((SNAPSHOT_TASK_META_COUNT + 1))
   done
@@ -732,7 +755,7 @@ task_json_lines() {
   local remote_host remote_root current_file endpoint_file observation_line index=0
   local pr pr_source event_json current_json endpoint_exists agent_alive meta_json status_json report_json worktree_json home_json
   local last_event_raw current_state current_source pending_decision blocked_event report_present=0 pr_from_status
-  local open_decisions_tsv open_decisions_json
+  local open_decisions_tsv open_decisions_json meta_locked_file meta_locked
 
   while [ "$index" -lt "$SNAPSHOT_TASK_META_COUNT" ]; do
     meta=${SNAPSHOT_TASK_METAS[index]}
@@ -816,6 +839,11 @@ task_json_lines() {
 
     endpoint_exists=null
     agent_alive=not_checked
+    meta_locked=false
+    meta_locked_file="$SNAPSHOT_TASK_DIR/$id.meta-locked"
+    if [ -f "$meta_locked_file" ] && [ "$(cat "$meta_locked_file" 2>/dev/null || true)" = true ]; then
+      meta_locked=true
+    fi
     endpoint_file="$SNAPSHOT_TASK_DIR/$id.endpoint"
     while IFS= read -r observation_line || [ -n "$observation_line" ]; do
       case "$observation_line" in
@@ -866,6 +894,7 @@ task_json_lines() {
       --argjson report "$report_json" \
       --argjson worktree_path "$worktree_json" \
       --argjson home_path "$home_json" \
+      --argjson meta_locked "$meta_locked" \
       --argjson endpoint_exists "$endpoint_exists" \
       --argjson open_decisions "$open_decisions_json" \
       --argjson pending_decision "$(bool_json "$pending_decision")" \
@@ -882,7 +911,7 @@ task_json_lines() {
         backend:$backend,
         remote:(if $remote_host == "" then null else {host:$remote_host,root:$remote_root} end),
         paths:{
-          meta:$meta_path,
+          meta:($meta_path + {locked:$meta_locked}),
           status_log:$status_log,
           worktree:$worktree_path,
           home:$home_path,
@@ -951,7 +980,7 @@ main_inventory_json() {  # <backlog-json-file> <tasks-json-file>
 # validated parent read needs.
 # This mode never reads parent events or terminal text and never aggregates
 # nested secondmates.
-secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
+secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file> <current-backlog-json-file>
   jq -n \
     --arg generated "$SNAPSHOT_NOW" \
     --argjson generated_epoch "$SNAPSHOT_EPOCH" \
@@ -961,9 +990,12 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
     --argjson decisions_n "$FM_SNAPSHOT_SECONDMATE_DECISIONS" \
     --argjson landed_n "$FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME" \
     --slurpfile backlog "$1" \
-    --slurpfile tasks "$2" --slurpfile contributions "$CONTRIBUTIONS_JSON_FILE" "$FM_LANDED_JQ_DEFS"'
+    --slurpfile tasks "$2" \
+    --slurpfile current_backlog "$3" \
+    --slurpfile contributions "$CONTRIBUTIONS_JSON_FILE" "$FM_LANDED_JQ_DEFS"'
     ($backlog[0]) as $backlog
     | ($tasks[0]) as $tasks
+    | ($current_backlog[0]) as $current_backlog
     | def trunc($n):
       tostring | gsub("\\s+"; " ")
       | if length > $n then .[:$n] + "…" else . end;
@@ -972,11 +1004,6 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
       | if ($filed | type) != "string" then null
         elif ($filed | test("T")) then try ($filed | fromdateiso8601) catch null
         else try (($filed + "T00:00:00Z") | fromdateiso8601) catch null end;
-    def spawn_epoch:
-      (.spawn_gen // "" | tostring) as $gen
-      | if ($gen | test("^s[0-9]+\\."))
-        then try ($gen[1:] | split(".")[0] | tonumber) catch null
-        else null end;
     def newest_filed_first:
       to_entries
       | sort_by((.value | filed_epoch) as $epoch
@@ -985,6 +1012,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
     ([ $backlog.records[]?
        | select((.state == "in_flight" or .state == "queued") and (.structured | not)) ]) as $unstructured_current
     | ([ $backlog.records[]? | select(.state == "in_flight" and .structured) ]) as $owned_in_flight
+    | ([ $current_backlog.records[]? | select(.state == "in_flight" and .structured) ]) as $current_owned_in_flight
     | ([ $backlog.records[]?
          | select(.structured and
              (.hold_bucket != null or .state == "queued" or
@@ -1014,7 +1042,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
          | select(.kind != "secondmate")
          | select(.id as $id | [$owned_in_flight[].id] | index($id) | not)
          | {id,state:.current_state.state,
-            provisional:((. | spawn_epoch) as $epoch | $epoch != null and $epoch >= $generated_epoch)} ]) as $unowned_children
+            provisional:((.paths.meta.locked == true) or (.id as $id | [$current_owned_in_flight[].id] | index($id) != null))} ]) as $unowned_children
     | ([ $owned_in_flight[] as $work
          | $tasks[]
          | select(.kind != "secondmate")
@@ -2017,7 +2045,12 @@ FM_CONTRIBUTIONS_NOW="$SNAPSHOT_NOW" "$SCRIPT_DIR/fm-contributions.sh" snapshot 
   || { echo "fm-fleet-snapshot: contribution coverage unavailable" >&2; exit 1; }
 
 if [ "$OUTPUT_MODE" = secondmate-home-summary ]; then
-  secondmate_home_summary_json "$BACKLOG_JSON_FILE" "$TASKS_JSON_FILE" \
+  BACKLOG_AFTER_TASKS_JSON=$(backlog_json) \
+    || { echo "fm-fleet-snapshot: current backlog read failed" >&2; exit 1; }
+  BACKLOG_AFTER_TASKS_JSON_FILE="$JSON_TRANSPORT_DIR/backlog-after-tasks.json"
+  printf '%s\n' "$BACKLOG_AFTER_TASKS_JSON" > "$BACKLOG_AFTER_TASKS_JSON_FILE" \
+    || { echo "fm-fleet-snapshot: temporary current backlog file write failed" >&2; exit 1; }
+  secondmate_home_summary_json "$BACKLOG_JSON_FILE" "$TASKS_JSON_FILE" "$BACKLOG_AFTER_TASKS_JSON_FILE" \
     || { echo "fm-fleet-snapshot: secondmate home summary failed" >&2; exit 1; }
   exit 0
 fi

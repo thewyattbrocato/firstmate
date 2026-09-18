@@ -1001,7 +1001,7 @@ test_parked_scout_decision_stays_pending() {
 # in-flight children. They have no backlog rows, so they must not produce
 # unowned_current or terminal_in_flight. Ordinary crew/ship metas still do.
 test_home_summary_excludes_secondmate_from_child_inventory() {
-  local home fakebin out
+  local home fakebin out lock holder release holder_pid i
   home=$(make_home summary-secondmate-only)
   mkdir -p "$home/secondmate-home" "$home/projects/unowned" "$home/projects/terminal"
   cat > "$home/data/backlog.md" <<'EOF'
@@ -1055,11 +1055,10 @@ EOF
     "project=alpha" \
     "harness=claude" \
     "kind=ship" \
-    "mode=no-mistakes" \
-    "spawn_gen=s1700000000.1.1"
+    "mode=no-mistakes"
   record_claude_idle "$home/state" unowned-ship
   printf 'needs-decision [key=unowned-ship]: choose a route\n' > "$home/state/unowned-ship.status"
-  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW_EPOCH=1700000001 "$SNAPSHOT" --secondmate-home-summary)
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary)
   printf '%s' "$out" | jq -e '
     .valid == false
       and .invalidity == {kind:"unowned_current",ids:["unowned-ship"]}
@@ -1067,13 +1066,34 @@ EOF
       and (.reason | contains("mate=") | not)
   ' >/dev/null || fail "ordinary unowned ship must still produce unowned_current without listing the secondmate: $out"
 
-  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW_EPOCH=1700000000 "$SNAPSHOT" --secondmate-home-summary)
+  lock=$(FM_STATE_OVERRIDE="$home/state" bash -c '. "$1"; fm_meta_lock_path "$2"' \
+    _ "$ROOT/bin/fm-wake-lib.sh" "$home/state/unowned-ship.meta") \
+    || fail "could not derive unowned-ship meta lock"
+  holder="$home/state/unowned-ship.lock-held"
+  release="$home/state/unowned-ship.release-lock"
+  FM_STATE_OVERRIDE="$home/state" bash -c '
+    . "$1"
+    fm_lock_try_acquire "$2" || exit 1
+    touch "$3"
+    while [ ! -e "$4" ]; do sleep 0.05; done
+    fm_lock_release "$2"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" "$holder" "$release" &
+  holder_pid=$!
+  i=0
+  while [ ! -e "$holder" ] && [ "$i" -lt 100 ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -e "$holder" ] || fail "meta lock holder did not start"
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary)
+  touch "$release"
+  wait "$holder_pid" || fail "meta lock holder failed"
   printf '%s' "$out" | jq -e '
     .valid == false
       and .invalidity == {kind:"unowned_current",ids:["unowned-ship"],provisional_ids:["unowned-ship"]}
       and (.reason | contains("unowned-ship=parked"))
       and (.reason | contains("mate=") | not)
-  ' >/dev/null || fail "same-snapshot spawned unowned ship must be marked provisional: $out"
+  ' >/dev/null || fail "locked unowned ship must be marked provisional: $out"
 
   rm -f "$home/state/unowned-ship.meta" "$home/state/unowned-ship.status"
   cat > "$home/data/backlog.md" <<'EOF'
