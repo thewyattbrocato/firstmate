@@ -57,6 +57,9 @@
 #     supervision rather than this snapshot path.
 #     paths.status_log.last_event is historical wake-event data only, never
 #     current state.
+#     paths.meta is the metadata path object plus locked, a snapshot-time
+#     observation of whether that task's metadata lock was contended during
+#     capture.
 #     hints.open_decisions is the keyed open-decision set returned by
 #     fm-classify-lib.sh's authoritative status_open_decisions fold and reconciled
 #     against current_state; hints.pending_decision and hints.blocked_event are
@@ -244,12 +247,17 @@ aggregation, includes generated_epoch for freshness arithmetic, and marks
 inventory contradictions or unavailable child state invalid.
 kind=secondmate meta records are not child inventory for unowned_current or
 terminal_in_flight; they never have backlog rows.
-Its invalidity object names the normalized failure kind and affected ids.
+Its invalidity object names the normalized failure kind and affected ids; for
+unowned_current, provisional_ids marks children whose metadata was locked or had
+already reached the current backlog after the summary's initial backlog read.
 Actionable tasks-axi captain holds appear as decisions_open and stay visible in
 queued with hold_reason, hold_kind, hold_until,
 hold_bucket, hold_age_days, and plural blocker fields for downstream
 projections. A captain hold is actionable only when every blocker is Done, any
 hold-until date has arrived, and an undated hold remains below the aging threshold.
+Child-state holds carry the child's parked, paused, or blocked state so
+downstream projections can separate external waits from stalls.
+omitted[] reports bounded child-state holds separately from queued rows.
 Cross-home collection uses FM_SNAPSHOT_SECONDMATES (default 20, 0 lifts the
 count bound) and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
 Every sampled remote home's state/home-summary.json is fetched concurrently
