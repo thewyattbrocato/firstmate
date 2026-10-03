@@ -62,6 +62,9 @@ If an addition needs more than a few lines of conditional detail (detail that ma
 `AGENTS.md`'s token cost is paid by every session of every fleet member, every time, whether or not that session ever hits the situation the new lines describe.
 A skill's cost is paid only by the sessions that actually load it.
 When in doubt, write the fact into the skill or doc first by patching that owner's existing language, and add only the one-line trigger to `AGENTS.md`.
+During backpass synthesis, edit only `AGENTS.md` unless a skill-file change is explicitly required and justified by the final diff.
+Before ending memory synthesis, resolve every suspected duplicate introduced by the edits and rerun the relevant structural-integrity check.
+Before ending memory synthesis, compare the final diff with the pre-edit files and verify that every moved or extracted instruction preserves order, indentation, and multiplicity.
 
 ## Trigger hygiene
 
